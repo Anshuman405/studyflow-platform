@@ -24,6 +24,7 @@ model User {
   studyStreaks  StudyStreak[]
   aiInsights    AiInsight[]
   timerSessions TimerSession[]
+  colleges      College[] @relation("UserCreatedColleges")
 
   @@map("users")
 }
@@ -48,6 +49,8 @@ model Task {
   @@index([userId])
   @@index([dueDate])
   @@index([status])
+  @@index([userId, status])
+  @@index([userId, dueDate])
   @@map("tasks")
 }
 
@@ -68,6 +71,7 @@ model Event {
   @@index([userId])
   @@index([date])
   @@index([category])
+  @@index([userId, date])
   @@map("events")
 }
 
@@ -87,6 +91,7 @@ model Note {
   @@index([userId])
   @@index([tags])
   @@index([title])
+  @@index([userId, updatedAt])
   @@map("notes")
 }
 
@@ -106,18 +111,19 @@ model Material {
   @@index([userId])
   @@index([subject])
   @@index([type])
+  @@index([userId, createdAt])
   @@map("materials")
 }
 
 model Reflection {
-  id                  Int                    @id @default(autoincrement())
-  date                DateTime               @db.Date
-  studyTimeBySubject  Json                   @default("{}")
-  mood                Int?                   @db.SmallInt
-  notes               String?
-  userId              String
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  id                 Int      @id @default(autoincrement())
+  date               DateTime @db.Date
+  studyTimeBySubject Json     @default("{}")
+  mood               Int?     @db.SmallInt
+  notes              String?
+  userId             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -125,6 +131,7 @@ model Reflection {
   @@unique([date, userId])
   @@index([userId])
   @@index([date])
+  @@index([userId, date])
   @@map("reflections")
 }
 
@@ -142,24 +149,29 @@ model StudyStreak {
   @@unique([date, userId])
   @@index([userId])
   @@index([date])
+  @@index([userId, date])
   @@map("study_streaks")
 }
 
 model College {
-  id             Int     @id @default(autoincrement())
-  name           String  @unique
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
   location       String?
   acceptanceRate Float?
   avgGpa         Float?
   avgSat         Int?
   avgAct         Int?
-  details        Json    @default("{}")
+  details        Json     @default("{}")
   createdBy      String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Relations
+  creator User @relation("UserCreatedColleges", fields: [createdBy], references: [id], onDelete: Cascade)
+
   @@index([name])
   @@index([createdBy])
+  @@index([acceptanceRate])
   @@map("colleges")
 }
 
@@ -168,7 +180,7 @@ model AiInsight {
   userId          String
   subject         String?
   recommendations Json
-  insightType     String   // "weekly", "study_breakdown", "college_prediction", etc.
+  insightType     String // "weekly", "study_breakdown", "college_prediction", etc.
   createdAt       DateTime @default(now())
 
   // Relations
@@ -177,14 +189,16 @@ model AiInsight {
   @@index([userId])
   @@index([insightType])
   @@index([createdAt])
+  @@index([userId, insightType])
+  @@index([userId, createdAt])
   @@map("ai_insights")
 }
 
 model TimerSession {
   id            Int      @id @default(autoincrement())
   taskId        Int?
-  estimatedTime Int      // in minutes
-  actualTime    Int?     // in minutes
+  estimatedTime Int // in minutes
+  actualTime    Int? // in minutes
   completed     Boolean  @default(false)
   userId        String
   createdAt     DateTime @default(now())
@@ -197,6 +211,8 @@ model TimerSession {
   @@index([userId])
   @@index([taskId])
   @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([userId, completed])
   @@map("timer_sessions")
 }
 

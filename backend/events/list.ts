@@ -1,33 +1,67 @@
 import { api } from "encore.dev/api";
+import { Query } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { prisma, withTiming } from "../db/db";
 import { ListEventsResponse, Event } from "./types";
 
-// Retrieves all events for the current user with optimized query.
-export const list = api<void, ListEventsResponse>(
+interface ListEventsParams {
+  page?: Query<number>;
+  limit?: Query<number>;
+  category?: Query<string>;
+  startDate?: Query<string>;
+  endDate?: Query<string>;
+}
+
+// Retrieves all events for the current user with optimized query and pagination.
+export const list = api<ListEventsParams, ListEventsResponse>(
   { auth: true, expose: true, method: "GET", path: "/events" },
-  async () => {
+  withTiming(async (params) => {
     const auth = getAuthData()!;
-    
-    const events = await prisma.event.findMany({
-      where: {
-        userId: auth.userID,
-      },
-      orderBy: {
-        date: 'asc',
-      },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        date: true,
-        category: true,
-        location: true,
-        userId: true,
-        createdAt: true,
-        updatedAt: true,
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 50, 100);
+    const offset = (page - 1) * limit;
+
+    // Build where clause
+    const where: any = {
+      userId: auth.userID,
+    };
+
+    if (params.category && params.category !== 'all') {
+      where.category = params.category.toUpperCase();
+    }
+
+    if (params.startDate || params.endDate) {
+      where.date = {};
+      if (params.startDate) {
+        where.date.gte = new Date(params.startDate);
       }
-    });
+      if (params.endDate) {
+        where.date.lte = new Date(params.endDate);
+      }
+    }
+
+    const [events, totalCount] = await Promise.all([
+      prisma.event.findMany({
+        where,
+        orderBy: {
+          date: 'asc',
+        },
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          date: true,
+          category: true,
+          location: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
+        }
+      }),
+      prisma.event.count({ where })
+    ]);
 
     const formattedEvents: Event[] = events.map(event => ({
       id: event.id,
@@ -41,6 +75,16 @@ export const list = api<void, ListEventsResponse>(
       updatedAt: event.updatedAt,
     }));
 
-    return { events: formattedEvents };
-  }
+    return { 
+      events: formattedEvents,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasNext: page * limit < totalCount,
+        hasPrev: page > 1,
+      }
+    };
+  }, "list_events")
 );

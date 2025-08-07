@@ -22,8 +22,18 @@ export interface CreateCollegeRequest {
   details?: Record<string, any>;
 }
 
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
 export interface SearchCollegesResponse {
   colleges: College[];
+  pagination?: PaginationInfo;
 }
 
 export interface AdmissionChanceRequest {

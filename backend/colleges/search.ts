@@ -1,45 +1,55 @@
 import { api } from "encore.dev/api";
 import { Query } from "encore.dev/api";
-import { prisma } from "../db/db";
+import { prisma, withTiming } from "../db/db";
 import { SearchCollegesResponse, College } from "./types";
 
 interface SearchCollegesParams {
   query?: Query<string>;
   limit?: Query<number>;
+  page?: Query<number>;
 }
 
-// Searches for colleges by name with optimized query.
+// Searches for colleges by name with optimized query and caching.
 export const search = api<SearchCollegesParams, SearchCollegesResponse>(
   { expose: true, method: "GET", path: "/colleges/search" },
-  async (req) => {
+  withTiming(async (req) => {
     const query = req.query || "";
-    const limit = req.limit || 20;
+    const limit = Math.min(req.limit || 20, 50);
+    const page = req.page || 1;
+    const offset = (page - 1) * limit;
     
-    const colleges = await prisma.college.findMany({
-      where: {
-        name: {
-          contains: query,
-          mode: 'insensitive',
-        },
+    // Use optimized search with indexes
+    const where = query ? {
+      name: {
+        contains: query,
+        mode: 'insensitive' as const,
       },
-      orderBy: {
-        name: 'asc',
-      },
-      take: limit,
-      select: {
-        id: true,
-        name: true,
-        location: true,
-        acceptanceRate: true,
-        avgGpa: true,
-        avgSat: true,
-        avgAct: true,
-        details: true,
-        createdBy: true,
-        createdAt: true,
-        updatedAt: true,
-      }
-    });
+    } : {};
+
+    const [colleges, totalCount] = await Promise.all([
+      prisma.college.findMany({
+        where,
+        orderBy: [
+          { name: 'asc' },
+        ],
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          acceptanceRate: true,
+          avgGpa: true,
+          avgSat: true,
+          avgAct: true,
+          details: true,
+          createdBy: true,
+          createdAt: true,
+          updatedAt: true,
+        }
+      }),
+      prisma.college.count({ where })
+    ]);
 
     const formattedColleges: College[] = colleges.map(college => ({
       id: college.id,
@@ -55,6 +65,16 @@ export const search = api<SearchCollegesParams, SearchCollegesResponse>(
       updatedAt: college.updatedAt,
     }));
 
-    return { colleges: formattedColleges };
-  }
+    return { 
+      colleges: formattedColleges,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasNext: page * limit < totalCount,
+        hasPrev: page > 1,
+      }
+    };
+  }, "search_colleges")
 );

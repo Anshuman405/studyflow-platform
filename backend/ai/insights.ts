@@ -1,6 +1,6 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { prisma, withTiming } from "../db/db";
 import { secret } from "encore.dev/config";
 
 const geminiApiKey = secret("GeminiApiKey");
@@ -15,23 +15,57 @@ interface GenerateInsightsResponse {
   recommendations: string[];
 }
 
-// Generates AI insights using Google Gemini.
+// Generates AI insights using Google Gemini with caching.
 export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsResponse>(
   { auth: true, expose: true, method: "POST", path: "/ai/insights" },
-  async (req) => {
+  withTiming(async (req) => {
     const auth = getAuthData()!;
     
-    // Get user's recent data for context
+    // Check for recent insights of the same type (cache for 1 hour)
+    const recentInsight = await prisma.aiInsight.findFirst({
+      where: {
+        userId: auth.userID,
+        insightType: req.type,
+        createdAt: {
+          gte: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (recentInsight) {
+      const cached = recentInsight.recommendations as any;
+      return {
+        insights: cached.insights || [],
+        recommendations: cached.recommendations || [],
+      };
+    }
+
+    // Get user's recent data for context with optimized queries
     const [tasks, reflections, events] = await Promise.all([
       prisma.task.findMany({
         where: { userId: auth.userID },
         orderBy: { createdAt: 'desc' },
         take: 20,
+        select: {
+          title: true,
+          status: true,
+          priority: true,
+          subject: true,
+          dueDate: true,
+        },
       }),
       prisma.reflection.findMany({
         where: { userId: auth.userID },
         orderBy: { date: 'desc' },
         take: 7,
+        select: {
+          date: true,
+          mood: true,
+          studyTimeBySubject: true,
+        },
       }),
       prisma.event.findMany({
         where: { 
@@ -40,6 +74,11 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
         },
         orderBy: { date: 'asc' },
         take: 10,
+        select: {
+          title: true,
+          category: true,
+          date: true,
+        },
       }),
     ]);
 
@@ -104,7 +143,10 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
       // Parse AI response
       let aiResponse;
       try {
-        aiResponse = JSON.parse(generatedText);
+        // Clean up the response text to extract JSON
+        const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+        const jsonText = jsonMatch ? jsonMatch[0] : generatedText;
+        aiResponse = JSON.parse(jsonText);
       } catch {
         // Fallback if JSON parsing fails
         aiResponse = {
@@ -130,7 +172,7 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
       console.error("AI insights generation failed:", error);
       
       // Return fallback insights
-      return {
+      const fallbackResponse = {
         insights: [
           "Keep up the great work with your studies!",
           "Your task completion rate shows good progress.",
@@ -142,6 +184,17 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
           "Review and adjust your study plan weekly"
         ],
       };
+
+      // Store fallback in database
+      await prisma.aiInsight.create({
+        data: {
+          userId: auth.userID,
+          recommendations: fallbackResponse,
+          insightType: req.type,
+        },
+      });
+
+      return fallbackResponse;
     }
-  }
+  }, "generate_ai_insights")
 );
