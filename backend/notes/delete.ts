@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { notesDB } from "./db";
+import { prisma } from "../db/db";
 
 interface DeleteNoteParams {
   id: number;
@@ -12,9 +12,18 @@ export const deleteNote = api<DeleteNoteParams, void>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const result = await notesDB.exec`
-      DELETE FROM notes 
-      WHERE id = ${req.id} AND user_id = ${auth.userID}
-    `;
+    try {
+      await prisma.note.delete({
+        where: {
+          id: req.id,
+          userId: auth.userID,
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw APIError.notFound("Note not found");
+      }
+      throw error;
+    }
   }
 );

@@ -1,37 +1,38 @@
 import { api, APIError } from "encore.dev/api";
-import { collegesDB } from "./db";
+import { prisma } from "../db/db";
 import { AdmissionChanceRequest, AdmissionChanceResponse } from "./types";
 
-// Calculates admission chance for a college based on student stats.
+// Calculates admission chance for a college based on student stats with optimized query.
 export const calculateAdmissionChance = api<AdmissionChanceRequest, AdmissionChanceResponse>(
   { expose: true, method: "POST", path: "/colleges/admission-chance" },
   async (req) => {
-    // Get college data
-    const college = await collegesDB.queryRow<{
-      id: number;
-      name: string;
-      acceptance_rate: number | null;
-      avg_gpa: number | null;
-      avg_sat: number | null;
-      avg_act: number | null;
-    }>`
-      SELECT id, name, acceptance_rate, avg_gpa, avg_sat, avg_act
-      FROM colleges 
-      WHERE id = ${req.collegeId}
-    `;
+    // Get college data with optimized query
+    const college = await prisma.college.findUnique({
+      where: {
+        id: req.collegeId,
+      },
+      select: {
+        id: true,
+        name: true,
+        acceptanceRate: true,
+        avgGpa: true,
+        avgSat: true,
+        avgAct: true,
+      }
+    });
 
     if (!college) {
       throw APIError.notFound("College not found");
     }
 
     // Simple admission chance calculation algorithm
-    let baseChance = college.acceptance_rate || 50; // Default to 50% if no data
+    let baseChance = college.acceptanceRate || 50; // Default to 50% if no data
     let adjustments = 0;
     const recommendations: string[] = [];
 
     // GPA comparison
-    if (college.avg_gpa) {
-      const gpaDiff = req.gpa - college.avg_gpa;
+    if (college.avgGpa) {
+      const gpaDiff = req.gpa - college.avgGpa;
       if (gpaDiff > 0.5) {
         adjustments += 20;
       } else if (gpaDiff > 0.2) {
@@ -46,8 +47,8 @@ export const calculateAdmissionChance = api<AdmissionChanceRequest, AdmissionCha
     }
 
     // SAT comparison
-    if (req.sat && college.avg_sat) {
-      const satDiff = req.sat - college.avg_sat;
+    if (req.sat && college.avgSat) {
+      const satDiff = req.sat - college.avgSat;
       if (satDiff > 100) {
         adjustments += 15;
       } else if (satDiff > 50) {
@@ -62,8 +63,8 @@ export const calculateAdmissionChance = api<AdmissionChanceRequest, AdmissionCha
     }
 
     // ACT comparison
-    if (req.act && college.avg_act) {
-      const actDiff = req.act - college.avg_act;
+    if (req.act && college.avgAct) {
+      const actDiff = req.act - college.avgAct;
       if (actDiff > 3) {
         adjustments += 15;
       } else if (actDiff > 1) {

@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { tasksDB } from "./db";
+import { prisma } from "../db/db";
 
 interface DeleteTaskParams {
   id: number;
@@ -12,12 +12,18 @@ export const deleteTask = api<DeleteTaskParams, void>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const result = await tasksDB.exec`
-      DELETE FROM tasks 
-      WHERE id = ${req.id} AND user_id = ${auth.userID}
-    `;
-
-    // Note: Encore.ts doesn't provide affected row count, so we'll assume success
-    // In a real implementation, you might want to check if the task exists first
+    try {
+      await prisma.task.delete({
+        where: {
+          id: req.id,
+          userId: auth.userID,
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw APIError.notFound("Task not found");
+      }
+      throw error;
+    }
   }
 );

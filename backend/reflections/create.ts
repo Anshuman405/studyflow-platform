@@ -1,6 +1,6 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { reflectionsDB } from "./db";
+import { prisma } from "../db/db";
 import { CreateReflectionRequest, Reflection } from "./types";
 
 // Creates or updates a reflection for a specific date.
@@ -9,41 +9,36 @@ export const create = api<CreateReflectionRequest, Reflection>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const row = await reflectionsDB.queryRow<{
-      id: number;
-      date: Date;
-      study_time_by_subject: Record<string, number>;
-      mood: number | null;
-      notes: string | null;
-      user_id: string;
-      created_at: Date;
-      updated_at: Date;
-    }>`
-      INSERT INTO reflections (date, study_time_by_subject, mood, notes, user_id)
-      VALUES (${req.date}, ${JSON.stringify(req.studyTimeBySubject || {})}, 
-              ${req.mood || null}, ${req.notes || null}, ${auth.userID})
-      ON CONFLICT (date, user_id) 
-      DO UPDATE SET 
-        study_time_by_subject = EXCLUDED.study_time_by_subject,
-        mood = EXCLUDED.mood,
-        notes = EXCLUDED.notes,
-        updated_at = NOW()
-      RETURNING *
-    `;
-
-    if (!row) {
-      throw new Error("Failed to create reflection");
-    }
+    const reflection = await prisma.reflection.upsert({
+      where: {
+        date_userId: {
+          date: req.date,
+          userId: auth.userID,
+        },
+      },
+      update: {
+        studyTimeBySubject: req.studyTimeBySubject || {},
+        mood: req.mood,
+        notes: req.notes,
+      },
+      create: {
+        date: req.date,
+        studyTimeBySubject: req.studyTimeBySubject || {},
+        mood: req.mood,
+        notes: req.notes,
+        userId: auth.userID,
+      },
+    });
 
     return {
-      id: row.id,
-      date: row.date,
-      studyTimeBySubject: row.study_time_by_subject,
-      mood: row.mood || undefined,
-      notes: row.notes || undefined,
-      userId: row.user_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      id: reflection.id,
+      date: reflection.date,
+      studyTimeBySubject: reflection.studyTimeBySubject as Record<string, number>,
+      mood: reflection.mood || undefined,
+      notes: reflection.notes || undefined,
+      userId: reflection.userId,
+      createdAt: reflection.createdAt,
+      updatedAt: reflection.updatedAt,
     };
   }
 );

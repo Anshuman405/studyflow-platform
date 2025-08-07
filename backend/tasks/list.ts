@@ -1,46 +1,53 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { tasksDB } from "./db";
+import { prisma } from "../db/db";
 import { ListTasksResponse, Task } from "./types";
 
-// Retrieves all tasks for the current user.
+// Retrieves all tasks for the current user with optimized query.
 export const list = api<void, ListTasksResponse>(
   { auth: true, expose: true, method: "GET", path: "/tasks" },
   async () => {
     const auth = getAuthData()!;
     
-    const rows = await tasksDB.queryAll<{
-      id: number;
-      title: string;
-      description: string | null;
-      subject: string | null;
-      start_date: Date | null;
-      due_date: Date | null;
-      priority: string;
-      status: string;
-      user_id: string;
-      created_at: Date;
-      updated_at: Date;
-    }>`
-      SELECT * FROM tasks 
-      WHERE user_id = ${auth.userID}
-      ORDER BY created_at DESC
-    `;
+    const tasks = await prisma.task.findMany({
+      where: {
+        userId: auth.userID,
+      },
+      orderBy: [
+        { status: 'asc' },
+        { priority: 'desc' },
+        { dueDate: 'asc' },
+        { createdAt: 'desc' }
+      ],
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        subject: true,
+        startDate: true,
+        dueDate: true,
+        priority: true,
+        status: true,
+        userId: true,
+        createdAt: true,
+        updatedAt: true,
+      }
+    });
 
-    const tasks: Task[] = rows.map(row => ({
-      id: row.id,
-      title: row.title,
-      description: row.description || undefined,
-      subject: row.subject || undefined,
-      startDate: row.start_date || undefined,
-      dueDate: row.due_date || undefined,
-      priority: row.priority as any,
-      status: row.status as any,
-      userId: row.user_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+    const formattedTasks: Task[] = tasks.map(task => ({
+      id: task.id,
+      title: task.title,
+      description: task.description || undefined,
+      subject: task.subject || undefined,
+      startDate: task.startDate || undefined,
+      dueDate: task.dueDate || undefined,
+      priority: task.priority.toLowerCase() as any,
+      status: task.status.toLowerCase().replace('_', '_') as any,
+      userId: task.userId,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
     }));
 
-    return { tasks };
+    return { tasks: formattedTasks };
   }
 );

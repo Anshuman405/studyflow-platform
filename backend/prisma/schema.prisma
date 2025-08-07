@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tasks         Task[]
+  events        Event[]
+  notes         Note[]
+  materials     Material[]
+  reflections   Reflection[]
+  studyStreaks  StudyStreak[]
+  aiInsights    AiInsight[]
+  timerSessions TimerSession[]
+
+  @@map("users")
+}
+
+model Task {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String?
+  subject     String?
+  startDate   DateTime?
+  dueDate     DateTime?
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(TODO)
+  userId      String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timerSessions TimerSession[]
+
+  @@index([userId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("tasks")
+}
+
+model Event {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String?
+  date        DateTime
+  category    EventCategory @default(OTHER)
+  location    String?
+  userId      String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([date])
+  @@index([category])
+  @@map("events")
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  tags      String[]
+  color     String   @default("#ffffff")
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tags])
+  @@index([title])
+  @@map("notes")
+}
+
+model Material {
+  id        Int          @id @default(autoincrement())
+  title     String
+  type      MaterialType
+  fileUrl   String?
+  subject   String?
+  userId    String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([subject])
+  @@index([type])
+  @@map("materials")
+}
+
+model Reflection {
+  id                  Int                    @id @default(autoincrement())
+  date                DateTime               @db.Date
+  studyTimeBySubject  Json                   @default("{}")
+  mood                Int?                   @db.SmallInt
+  notes               String?
+  userId              String
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([date, userId])
+  @@index([userId])
+  @@index([date])
+  @@map("reflections")
+}
+
+model StudyStreak {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @db.Date
+  count     Int      @default(1)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([date, userId])
+  @@index([userId])
+  @@index([date])
+  @@map("study_streaks")
+}
+
+model College {
+  id             Int     @id @default(autoincrement())
+  name           String  @unique
+  location       String?
+  acceptanceRate Float?
+  avgGpa         Float?
+  avgSat         Int?
+  avgAct         Int?
+  details        Json    @default("{}")
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([name])
+  @@index([createdBy])
+  @@map("colleges")
+}
+
+model AiInsight {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  subject         String?
+  recommendations Json
+  insightType     String   // "weekly", "study_breakdown", "college_prediction", etc.
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([insightType])
+  @@index([createdAt])
+  @@map("ai_insights")
+}
+
+model TimerSession {
+  id            Int      @id @default(autoincrement())
+  taskId        Int?
+  estimatedTime Int      // in minutes
+  actualTime    Int?     // in minutes
+  completed     Boolean  @default(false)
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([taskId])
+  @@index([createdAt])
+  @@map("timer_sessions")
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum EventCategory {
+  EXAM
+  STUDY_SESSION
+  ASSIGNMENT
+  LAB
+  OTHER
+}
+
+enum MaterialType {
+  PDF
+  DOC
+  NOTE
+  LINK
+  OTHER
+}

@@ -1,40 +1,44 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { materialsDB } from "./db";
+import { prisma } from "../db/db";
 import { ListMaterialsResponse, Material } from "./types";
 
-// Retrieves all study materials for the current user.
+// Retrieves all study materials for the current user with optimized query.
 export const list = api<void, ListMaterialsResponse>(
   { auth: true, expose: true, method: "GET", path: "/materials" },
   async () => {
     const auth = getAuthData()!;
     
-    const rows = await materialsDB.queryAll<{
-      id: number;
-      title: string;
-      type: string;
-      file_url: string | null;
-      subject: string | null;
-      user_id: string;
-      created_at: Date;
-      updated_at: Date;
-    }>`
-      SELECT * FROM materials 
-      WHERE user_id = ${auth.userID}
-      ORDER BY created_at DESC
-    `;
+    const materials = await prisma.material.findMany({
+      where: {
+        userId: auth.userID,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        fileUrl: true,
+        subject: true,
+        userId: true,
+        createdAt: true,
+        updatedAt: true,
+      }
+    });
 
-    const materials: Material[] = rows.map(row => ({
-      id: row.id,
-      title: row.title,
-      type: row.type as any,
-      fileUrl: row.file_url || undefined,
-      subject: row.subject || undefined,
-      userId: row.user_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+    const formattedMaterials: Material[] = materials.map(material => ({
+      id: material.id,
+      title: material.title,
+      type: material.type.toLowerCase() as any,
+      fileUrl: material.fileUrl || undefined,
+      subject: material.subject || undefined,
+      userId: material.userId,
+      createdAt: material.createdAt,
+      updatedAt: material.updatedAt,
     }));
 
-    return { materials };
+    return { materials: formattedMaterials };
   }
 );

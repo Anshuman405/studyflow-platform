@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { materialsDB } from "./db";
+import { prisma } from "../db/db";
 
 interface DeleteMaterialParams {
   id: number;
@@ -12,9 +12,18 @@ export const deleteMaterial = api<DeleteMaterialParams, void>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const result = await materialsDB.exec`
-      DELETE FROM materials 
-      WHERE id = ${req.id} AND user_id = ${auth.userID}
-    `;
+    try {
+      await prisma.material.delete({
+        where: {
+          id: req.id,
+          userId: auth.userID,
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw APIError.notFound("Material not found");
+      }
+      throw error;
+    }
   }
 );

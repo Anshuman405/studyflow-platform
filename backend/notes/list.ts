@@ -1,40 +1,44 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { notesDB } from "./db";
+import { prisma } from "../db/db";
 import { ListNotesResponse, Note } from "./types";
 
-// Retrieves all notes for the current user.
+// Retrieves all notes for the current user with optimized query.
 export const list = api<void, ListNotesResponse>(
   { auth: true, expose: true, method: "GET", path: "/notes" },
   async () => {
     const auth = getAuthData()!;
     
-    const rows = await notesDB.queryAll<{
-      id: number;
-      title: string;
-      content: string;
-      tags: string[];
-      color: string;
-      user_id: string;
-      created_at: Date;
-      updated_at: Date;
-    }>`
-      SELECT * FROM notes 
-      WHERE user_id = ${auth.userID}
-      ORDER BY updated_at DESC
-    `;
+    const notes = await prisma.note.findMany({
+      where: {
+        userId: auth.userID,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        tags: true,
+        color: true,
+        userId: true,
+        createdAt: true,
+        updatedAt: true,
+      }
+    });
 
-    const notes: Note[] = rows.map(row => ({
-      id: row.id,
-      title: row.title,
-      content: row.content,
-      tags: row.tags,
-      color: row.color,
-      userId: row.user_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+    const formattedNotes: Note[] = notes.map(note => ({
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      tags: note.tags,
+      color: note.color,
+      userId: note.userId,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
     }));
 
-    return { notes };
+    return { notes: formattedNotes };
   }
 );

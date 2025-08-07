@@ -33,13 +33,16 @@ const BROWSER = typeof globalThis === "object" && ("window" in globalThis);
  * Client is an API client for the  Encore application.
  */
 export class Client {
+    public readonly ai: ai.ServiceClient
     public readonly auth: auth.ServiceClient
     public readonly colleges: colleges.ServiceClient
+    public readonly db: db.ServiceClient
     public readonly events: events.ServiceClient
     public readonly materials: materials.ServiceClient
     public readonly notes: notes.ServiceClient
     public readonly reflections: reflections.ServiceClient
     public readonly tasks: tasks.ServiceClient
+    public readonly timer: timer.ServiceClient
     private readonly options: ClientOptions
     private readonly target: string
 
@@ -54,13 +57,16 @@ export class Client {
         this.target = target
         this.options = options ?? {}
         const base = new BaseClient(this.target, this.options)
+        this.ai = new ai.ServiceClient(base)
         this.auth = new auth.ServiceClient(base)
         this.colleges = new colleges.ServiceClient(base)
+        this.db = new db.ServiceClient(base)
         this.events = new events.ServiceClient(base)
         this.materials = new materials.ServiceClient(base)
         this.notes = new notes.ServiceClient(base)
         this.reflections = new reflections.ServiceClient(base)
         this.tasks = new tasks.ServiceClient(base)
+        this.timer = new timer.ServiceClient(base)
     }
 
     /**
@@ -101,6 +107,32 @@ export interface ClientOptions {
      * a function which returns a new object for each request.
      */
     auth?: RequestType<typeof auth_auth> | AuthDataGenerator
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { generateInsights as api_ai_insights_generateInsights } from "~backend/ai/insights";
+
+export namespace ai {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.generateInsights = this.generateInsights.bind(this)
+        }
+
+        /**
+         * Generates AI insights using Google Gemini with caching.
+         */
+        public async generateInsights(params: RequestType<typeof api_ai_insights_generateInsights>): Promise<ResponseType<typeof api_ai_insights_generateInsights>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/ai/insights`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_ai_insights_generateInsights>
+        }
+    }
 }
 
 /**
@@ -149,7 +181,7 @@ export namespace colleges {
         }
 
         /**
-         * Calculates admission chance for a college based on student stats.
+         * Calculates admission chance for a college based on student stats with optimized query.
          */
         public async calculateAdmissionChance(params: RequestType<typeof api_colleges_admission_chance_calculateAdmissionChance>): Promise<ResponseType<typeof api_colleges_admission_chance_calculateAdmissionChance>> {
             // Now make the actual call to the API
@@ -167,18 +199,58 @@ export namespace colleges {
         }
 
         /**
-         * Searches for colleges by name.
+         * Searches for colleges by name with optimized query and caching.
          */
         public async search(params: RequestType<typeof api_colleges_search_search>): Promise<ResponseType<typeof api_colleges_search_search>> {
             // Convert our params into the objects we need for the request
             const query = makeRecord<string, string | string[]>({
                 limit: params.limit === undefined ? undefined : String(params.limit),
+                page:  params.page === undefined ? undefined : String(params.page),
                 query: params.query,
             })
 
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/colleges/search`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_colleges_search_search>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import {
+    health as api_db_health_health,
+    info as api_db_health_info
+} from "~backend/db/health";
+
+export namespace db {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.health = this.health.bind(this)
+            this.info = this.info.bind(this)
+        }
+
+        /**
+         * Health check endpoint for database connectivity
+         */
+        public async health(): Promise<ResponseType<typeof api_db_health_health>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/db/health`, {method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_db_health_health>
+        }
+
+        /**
+         * Database introspection endpoint for debugging
+         */
+        public async info(): Promise<ResponseType<typeof api_db_health_info>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/db/info`, {method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_db_health_info>
         }
     }
 }
@@ -221,11 +293,20 @@ export namespace events {
         }
 
         /**
-         * Retrieves all events for the current user.
+         * Retrieves all events for the current user with optimized query and pagination.
          */
-        public async list(): Promise<ResponseType<typeof api_events_list_list>> {
+        public async list(params: RequestType<typeof api_events_list_list>): Promise<ResponseType<typeof api_events_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                category:  params.category,
+                endDate:   params.endDate,
+                limit:     params.limit === undefined ? undefined : String(params.limit),
+                page:      params.page === undefined ? undefined : String(params.page),
+                startDate: params.startDate,
+            })
+
             // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/events`, {method: "GET", body: undefined})
+            const resp = await this.baseClient.callTypedAPI(`/events`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_events_list_list>
         }
 
@@ -285,11 +366,19 @@ export namespace materials {
         }
 
         /**
-         * Retrieves all study materials for the current user.
+         * Retrieves all study materials for the current user with optimized query.
          */
-        public async list(): Promise<ResponseType<typeof api_materials_list_list>> {
+        public async list(params: RequestType<typeof api_materials_list_list>): Promise<ResponseType<typeof api_materials_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                limit:   params.limit === undefined ? undefined : String(params.limit),
+                page:    params.page === undefined ? undefined : String(params.page),
+                subject: params.subject,
+                type:    params.type,
+            })
+
             // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/materials`, {method: "GET", body: undefined})
+            const resp = await this.baseClient.callTypedAPI(`/materials`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_materials_list_list>
         }
     }
@@ -333,11 +422,19 @@ export namespace notes {
         }
 
         /**
-         * Retrieves all notes for the current user.
+         * Retrieves all notes for the current user with optimized query and search.
          */
-        public async list(): Promise<ResponseType<typeof api_notes_list_list>> {
+        public async list(params: RequestType<typeof api_notes_list_list>): Promise<ResponseType<typeof api_notes_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                limit:  params.limit === undefined ? undefined : String(params.limit),
+                page:   params.page === undefined ? undefined : String(params.page),
+                search: params.search,
+                tags:   params.tags,
+            })
+
             // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/notes`, {method: "GET", body: undefined})
+            const resp = await this.baseClient.callTypedAPI(`/notes`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_notes_list_list>
         }
 
@@ -389,7 +486,7 @@ export namespace reflections {
         }
 
         /**
-         * Retrieves study statistics for the current user.
+         * Retrieves study statistics for the current user with optimized query.
          */
         public async getStats(): Promise<ResponseType<typeof api_reflections_stats_getStats>> {
             // Now make the actual call to the API
@@ -398,11 +495,19 @@ export namespace reflections {
         }
 
         /**
-         * Retrieves all reflections for the current user.
+         * Retrieves all reflections for the current user with optimized query.
          */
-        public async list(): Promise<ResponseType<typeof api_reflections_list_list>> {
+        public async list(params: RequestType<typeof api_reflections_list_list>): Promise<ResponseType<typeof api_reflections_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                endDate:   params.endDate,
+                limit:     params.limit === undefined ? undefined : String(params.limit),
+                page:      params.page === undefined ? undefined : String(params.page),
+                startDate: params.startDate,
+            })
+
             // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/reflections`, {method: "GET", body: undefined})
+            const resp = await this.baseClient.callTypedAPI(`/reflections`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_reflections_list_list>
         }
     }
@@ -446,11 +551,20 @@ export namespace tasks {
         }
 
         /**
-         * Retrieves all tasks for the current user.
+         * Retrieves all tasks for the current user with optimized query and pagination.
          */
-        public async list(): Promise<ResponseType<typeof api_tasks_list_list>> {
+        public async list(params: RequestType<typeof api_tasks_list_list>): Promise<ResponseType<typeof api_tasks_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                limit:    params.limit === undefined ? undefined : String(params.limit),
+                page:     params.page === undefined ? undefined : String(params.page),
+                priority: params.priority,
+                status:   params.status,
+                subject:  params.subject,
+            })
+
             // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/tasks`, {method: "GET", body: undefined})
+            const resp = await this.baseClient.callTypedAPI(`/tasks`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_tasks_list_list>
         }
 
@@ -472,6 +586,56 @@ export namespace tasks {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/tasks/${encodeURIComponent(params.id)}`, {method: "PUT", body: JSON.stringify(body)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_tasks_update_update>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { estimateTime as api_timer_estimate_estimateTime } from "~backend/timer/estimate";
+import {
+    createSession as api_timer_session_createSession,
+    updateSession as api_timer_session_updateSession
+} from "~backend/timer/session";
+
+export namespace timer {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.createSession = this.createSession.bind(this)
+            this.estimateTime = this.estimateTime.bind(this)
+            this.updateSession = this.updateSession.bind(this)
+        }
+
+        /**
+         * Creates a new timer session.
+         */
+        public async createSession(params: RequestType<typeof api_timer_session_createSession>): Promise<ResponseType<typeof api_timer_session_createSession>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/timer/sessions`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_timer_session_createSession>
+        }
+
+        /**
+         * Estimates task completion time using AI.
+         */
+        public async estimateTime(params: RequestType<typeof api_timer_estimate_estimateTime>): Promise<ResponseType<typeof api_timer_estimate_estimateTime>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/timer/estimate`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_timer_estimate_estimateTime>
+        }
+
+        /**
+         * Updates a timer session with actual time.
+         */
+        public async updateSession(params: RequestType<typeof api_timer_session_updateSession>): Promise<ResponseType<typeof api_timer_session_updateSession>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/timer/sessions`, {method: "PUT", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_timer_session_updateSession>
         }
     }
 }
