@@ -1,10 +1,13 @@
-export type MaterialType = "pdf" | "doc" | "note" | "link" | "other";
+export type MaterialType = "pdf" | "doc" | "note" | "link" | "image" | "video" | "other";
 
 export interface Material {
   id: number;
   title: string;
   type: MaterialType;
   fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
   subject?: string;
   userId: string;
   createdAt: Date;
@@ -15,6 +18,9 @@ export interface CreateMaterialRequest {
   title: string;
   type: MaterialType;
   fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
   subject?: string;
 }
 
@@ -22,6 +28,9 @@ export interface UpdateMaterialRequest {
   title?: string;
   type?: MaterialType;
   fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
   subject?: string;
 }
 

@@ -7,7 +7,10 @@ import {
   BookOpen, 
   BarChart3, 
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Users,
+  Database,
+  Bell
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +22,8 @@ const navigation = [
   { name: "Materials", href: "/materials", icon: BookOpen, color: "text-indigo-600" },
   { name: "Reflections", href: "/reflections", icon: BarChart3, color: "text-pink-600" },
   { name: "Colleges", href: "/colleges", icon: GraduationCap, color: "text-orange-600" },
+  { name: "Study Groups", href: "/study-groups", icon: Users, color: "text-teal-600" },
+  { name: "Data Export", href: "/data-export", icon: Database, color: "text-slate-600" },
 ];
 
 export default function Sidebar() {

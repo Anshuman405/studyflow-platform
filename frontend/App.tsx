@@ -10,10 +10,28 @@ import Notes from "./pages/Notes";
 import Materials from "./pages/Materials";
 import Reflections from "./pages/Reflections";
 import Colleges from "./pages/Colleges";
+import StudyGroups from "./pages/StudyGroups";
+import DataExport from "./pages/DataExport";
 import Sidebar from "./components/Sidebar";
+import NotificationCenter from "./components/NotificationCenter";
 import { GraduationCap, BookOpen, Sparkles } from "lucide-react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      cacheTime: 10 * 60 * 1000, // 10 minutes
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error: any) => {
+        // Retry on network errors but not on 4xx errors
+        if (error?.status >= 400 && error?.status < 500) {
+          return false;
+        }
+        return failureCount < 3;
+      },
+    },
+  },
+});
 
 function AppInner() {
   return (
@@ -68,14 +86,17 @@ function AppInner() {
                       StudyFlow
                     </h1>
                   </div>
-                  <UserButton 
-                    afterSignOutUrl="/" 
-                    appearance={{
-                      elements: {
-                        avatarBox: "w-10 h-10 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-200"
-                      }
-                    }}
-                  />
+                  <div className="flex items-center gap-4">
+                    <NotificationCenter />
+                    <UserButton 
+                      afterSignOutUrl="/" 
+                      appearance={{
+                        elements: {
+                          avatarBox: "w-10 h-10 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-200"
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
               </header>
               
@@ -89,6 +110,8 @@ function AppInner() {
                   <Route path="/materials" element={<Materials />} />
                   <Route path="/reflections" element={<Reflections />} />
                   <Route path="/colleges" element={<Colleges />} />
+                  <Route path="/study-groups" element={<StudyGroups />} />
+                  <Route path="/data-export" element={<DataExport />} />
                 </Routes>
               </div>
             </main>

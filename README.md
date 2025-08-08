@@ -1,6 +1,6 @@
 # StudyFlow - AI-Powered Academic Management System
 
-A comprehensive academic management platform built with Encore.ts, Prisma, and React, featuring AI-powered insights and performance optimization.
+A comprehensive academic management platform built with Encore.ts, Prisma, and React, featuring AI-powered insights, collaborative study groups, file uploads, and performance optimization.
 
 ## 🚀 Quick Start
 
@@ -30,19 +30,14 @@ A comprehensive academic management platform built with Encore.ts, Prisma, and R
 
 3. **Database Setup**
    ```bash
-   cd backend
-   
-   # Generate Prisma client
-   npx prisma generate
-   
-   # Run migrations
-   npx prisma migrate dev --name init
+   # Run automated migration script
+   node scripts/migrate-db.js
    
    # Verify database connection
-   node ../scripts/verify-db.js
+   node scripts/verify-db.js
    
    # Seed sample data (optional)
-   node ../scripts/seed-colleges.js
+   node scripts/seed-colleges.js
    ```
 
 4. **Configure Secrets**
@@ -64,15 +59,17 @@ cd frontend && npm run dev
 
 ### Backend (Encore.ts)
 - **Database**: Prisma ORM with PostgreSQL (Neon)
-- **Authentication**: Clerk integration
+- **Authentication**: Clerk integration with retry logic
 - **AI Integration**: Google Gemini for insights
-- **Performance**: Optimized queries, caching, pagination
+- **File Storage**: Encore.ts Object Storage with signed URLs
+- **Performance**: Optimized queries, caching, pagination, retry logic
 
 ### Frontend (React + TypeScript)
 - **UI Framework**: ShadCN/UI components
-- **State Management**: TanStack Query
+- **State Management**: TanStack Query with optimized caching
 - **Styling**: Tailwind CSS v4
 - **Performance**: Code splitting, lazy loading, optimized queries
+- **Error Handling**: Comprehensive error boundaries and retry logic
 
 ## 📊 Database Schema
 
@@ -81,22 +78,31 @@ cd frontend && npm run dev
 - **Tasks**: Academic assignments with priority and status
 - **Events**: Calendar events and deadlines  
 - **Notes**: Rich text notes with tags and colors
-- **Materials**: Study resources and files
+- **Materials**: Study resources with file upload support
 - **Reflections**: Daily study tracking and mood
 - **Colleges**: Institution data for admission calculator
 - **AI Insights**: Generated recommendations and analysis
 - **Timer Sessions**: Pomodoro timer tracking
+
+### New Features
+- **Notifications**: Push notifications for deadlines and reminders
+- **Study Groups**: Collaborative learning with join codes
+- **Group Tasks & Notes**: Shared content within study groups
+- **Data Export**: Full data backup and export functionality
+- **File Upload**: Secure file storage with signed URLs
 
 ### Performance Optimizations
 - Composite indexes on frequently queried fields
 - Pagination for large datasets
 - Query optimization with selective field loading
 - Connection pooling via Neon
+- Retry logic for failed database operations
+- Comprehensive error handling
 
 ## 🔧 API Endpoints
 
 ### Health & Diagnostics
-- `GET /db/health` - Database connectivity test
+- `GET /db/health` - Database connectivity test with retry logic
 - `GET /db/info` - Table statistics and schema info
 
 ### Core Resources
@@ -106,6 +112,18 @@ cd frontend && npm run dev
 - `DELETE /tasks/:id` - Delete task
 
 Similar CRUD patterns for events, notes, materials, reflections.
+
+### New Features
+- `GET /notifications` - List user notifications
+- `POST /notifications` - Create notification
+- `PUT /notifications/:id/read` - Mark as read
+- `POST /upload/generate-url` - Generate signed upload URL
+- `POST /upload/download-url` - Generate signed download URL
+- `GET /groups` - List study groups
+- `POST /groups` - Create study group
+- `POST /groups/join` - Join group with code
+- `POST /export/create` - Create data export
+- `GET /export/list` - List user exports
 
 ### AI Features
 - `POST /ai/insights` - Generate AI recommendations
@@ -124,40 +142,20 @@ Similar CRUD patterns for events, notes, materials, reflections.
 - **Pagination**: Cursor-based pagination for large datasets
 - **Connection Pooling**: Optimized Neon connection management
 - **Timing Logs**: Performance monitoring for all DB operations
+- **Retry Logic**: Automatic retry for failed network/database requests
+- **Error Handling**: Comprehensive error handling with graceful degradation
 
 ### Frontend Optimizations
 - **Code Splitting**: Dynamic imports for heavy components
-- **Query Optimization**: Stale-while-revalidate caching
+- **Query Optimization**: Stale-while-revalidate caching with TanStack Query
 - **Loading States**: Skeleton screens and progressive loading
-- **Error Boundaries**: Graceful error handling
+- **Error Boundaries**: Graceful error handling with retry options
 - **Responsive Design**: Mobile-first approach
+- **Optimistic Updates**: Immediate UI feedback with rollback on failure
 
-## 🧪 Testing & Verification
+## 🆕 New Features
 
-### Database Verification
-```bash
-# Run comprehensive database tests
-node scripts/verify-db.js
-
-# Expected output:
-# ✅ Database connection successful
-# ✅ Found X tables in public schema
-# ✅ CRUD operations working
-# ⏱️ Total verification time: XXXms
-```
-
-### Performance Testing
-```bash
-# Check API response times
-curl -w "@curl-format.txt" http://localhost:4000/db/health
-
-# Monitor database query performance
-# Check logs for "[DB] operation_name completed in XXXms"
-```
-
-### Feature Testing Checklist
-
-#### ✅ Database & Connectivity
-- [x] Neon PostgreSQL connection established
-- [x] All tables created and visible in Neon console
-- [
+### File Upload System
+- **Secure Storage**: Files stored in Encore.ts Object Storage
+- **Signed URLs**: Temporary upload/download URLs for security
+- **File

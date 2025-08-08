@@ -25,6 +25,11 @@ model User {
   aiInsights    AiInsight[]
   timerSessions TimerSession[]
   colleges      College[] @relation("UserCreatedColleges")
+  notifications Notification[]
+  studyGroups   StudyGroupMember[]
+  createdGroups StudyGroup[] @relation("StudyGroupCreator")
+  assignedTasks GroupTask[] @relation("GroupTaskAssigner")
+  authoredNotes GroupNote[] @relation("GroupNoteAuthor")
 
   @@map("users")
 }
@@ -45,6 +50,7 @@ model Task {
   // Relations
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   timerSessions TimerSession[]
+  notifications Notification[]
 
   @@index([userId])
   @@index([dueDate])
@@ -66,7 +72,8 @@ model Event {
   updatedAt   DateTime      @updatedAt
 
   // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 
   @@index([userId])
   @@index([date])
@@ -100,6 +107,9 @@ model Material {
   title     String
   type      MaterialType
   fileUrl   String?
+  fileName  String?
+  fileSize  Int?
+  mimeType  String?
   subject   String?
   userId    String
   createdAt DateTime     @default(now())
@@ -216,6 +226,134 @@ model TimerSession {
   @@map("timer_sessions")
 }
 
+model Notification {
+  id        Int              @id @default(autoincrement())
+  title     String
+  message   String
+  type      NotificationType @default(REMINDER)
+  read      Boolean          @default(false)
+  userId    String
+  taskId    Int?
+  eventId   Int?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  // Relations
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task  Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+model StudyGroup {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  code        String   @unique // Join code
+  isPublic    Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  creator User               @relation("StudyGroupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members StudyGroupMember[]
+  tasks   GroupTask[]
+  notes   GroupNote[]
+
+  @@index([code])
+  @@index([createdBy])
+  @@index([isPublic])
+  @@map("study_groups")
+}
+
+model StudyGroupMember {
+  id          Int                 @id @default(autoincrement())
+  userId      String
+  groupId     Int
+  role        StudyGroupRole      @default(MEMBER)
+  status      StudyGroupStatus    @default(ACTIVE)
+  joinedAt    DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  // Relations
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+  @@index([status])
+  @@map("study_group_members")
+}
+
+model GroupTask {
+  id           Int          @id @default(autoincrement())
+  title        String
+  description  String?
+  subject      String?
+  dueDate      DateTime?
+  priority     TaskPriority @default(MEDIUM)
+  status       TaskStatus   @default(TODO)
+  groupId      Int
+  assignedById String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  group      StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  assignedBy User       @relation("GroupTaskAssigner", fields: [assignedById], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([assignedById])
+  @@index([dueDate])
+  @@index([status])
+  @@map("group_tasks")
+}
+
+model GroupNote {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  tags      String[]
+  color     String   @default("#ffffff")
+  groupId   Int
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  group  StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author User       @relation("GroupNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([authorId])
+  @@index([tags])
+  @@index([title])
+  @@map("group_notes")
+}
+
+model DataExport {
+  id        Int            @id @default(autoincrement())
+  userId    String
+  type      DataExportType
+  status    ExportStatus   @default(PENDING)
+  fileUrl   String?
+  fileName  String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("data_exports")
+}
+
 enum TaskPriority {
   LOW
   MEDIUM
@@ -241,5 +379,41 @@ enum MaterialType {
   DOC
   NOTE
   LINK
+  IMAGE
+  VIDEO
   OTHER
+}
+
+enum NotificationType {
+  REMINDER
+  DEADLINE
+  GROUP_INVITE
+  SYSTEM
+}
+
+enum StudyGroupRole {
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum StudyGroupStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+enum DataExportType {
+  FULL
+  TASKS
+  NOTES
+  MATERIALS
+  REFLECTIONS
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
