@@ -38,11 +38,15 @@ export class Client {
     public readonly colleges: colleges.ServiceClient
     public readonly db: db.ServiceClient
     public readonly events: events.ServiceClient
+    public readonly dataexport: dataexport.ServiceClient
+    public readonly groups: groups.ServiceClient
     public readonly materials: materials.ServiceClient
     public readonly notes: notes.ServiceClient
+    public readonly notifications: notifications.ServiceClient
     public readonly reflections: reflections.ServiceClient
     public readonly tasks: tasks.ServiceClient
     public readonly timer: timer.ServiceClient
+    public readonly upload: upload.ServiceClient
     private readonly options: ClientOptions
     private readonly target: string
 
@@ -62,11 +66,15 @@ export class Client {
         this.colleges = new colleges.ServiceClient(base)
         this.db = new db.ServiceClient(base)
         this.events = new events.ServiceClient(base)
+        this.dataexport = new dataexport.ServiceClient(base)
+        this.groups = new groups.ServiceClient(base)
         this.materials = new materials.ServiceClient(base)
         this.notes = new notes.ServiceClient(base)
+        this.notifications = new notifications.ServiceClient(base)
         this.reflections = new reflections.ServiceClient(base)
         this.tasks = new tasks.ServiceClient(base)
         this.timer = new timer.ServiceClient(base)
+        this.upload = new upload.ServiceClient(base)
     }
 
     /**
@@ -333,9 +341,104 @@ export namespace events {
 /**
  * Import the endpoint handlers to derive the types for the client.
  */
+import {
+    createExport as api_dataexport_data_createExport,
+    listExports as api_dataexport_data_listExports
+} from "~backend/export/data";
+
+export namespace dataexport {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.createExport = this.createExport.bind(this)
+            this.listExports = this.listExports.bind(this)
+        }
+
+        /**
+         * Creates a new data export request.
+         */
+        public async createExport(params: RequestType<typeof api_dataexport_data_createExport>): Promise<ResponseType<typeof api_dataexport_data_createExport>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/export/create`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_dataexport_data_createExport>
+        }
+
+        /**
+         * Lists all exports for the current user.
+         */
+        public async listExports(): Promise<ResponseType<typeof api_dataexport_data_listExports>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/export/list`, {method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_dataexport_data_listExports>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { create as api_groups_create_create } from "~backend/groups/create";
+import { join as api_groups_join_join } from "~backend/groups/join";
+import { list as api_groups_list_list } from "~backend/groups/list";
+
+export namespace groups {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.create = this.create.bind(this)
+            this.join = this.join.bind(this)
+            this.list = this.list.bind(this)
+        }
+
+        /**
+         * Creates a new study group.
+         */
+        public async create(params: RequestType<typeof api_groups_create_create>): Promise<ResponseType<typeof api_groups_create_create>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/groups`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_groups_create_create>
+        }
+
+        /**
+         * Joins a study group using a join code.
+         */
+        public async join(params: RequestType<typeof api_groups_join_join>): Promise<ResponseType<typeof api_groups_join_join>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/groups/join`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_groups_join_join>
+        }
+
+        /**
+         * Lists study groups.
+         */
+        public async list(params: RequestType<typeof api_groups_list_list>): Promise<ResponseType<typeof api_groups_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                limit:    params.limit === undefined ? undefined : String(params.limit),
+                myGroups: params.myGroups === undefined ? undefined : String(params.myGroups),
+                page:     params.page === undefined ? undefined : String(params.page),
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/groups`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_groups_list_list>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
 import { create as api_materials_create_create } from "~backend/materials/create";
 import { deleteMaterial as api_materials_delete_deleteMaterial } from "~backend/materials/delete";
 import { list as api_materials_list_list } from "~backend/materials/list";
+import { update as api_materials_update_update } from "~backend/materials/update";
 
 export namespace materials {
 
@@ -347,6 +450,7 @@ export namespace materials {
             this.create = this.create.bind(this)
             this.deleteMaterial = this.deleteMaterial.bind(this)
             this.list = this.list.bind(this)
+            this.update = this.update.bind(this)
         }
 
         /**
@@ -380,6 +484,26 @@ export namespace materials {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/materials`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_materials_list_list>
+        }
+
+        /**
+         * Updates an existing material.
+         */
+        public async update(params: RequestType<typeof api_materials_update_update>): Promise<ResponseType<typeof api_materials_update_update>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                fileName: params.fileName,
+                fileSize: params.fileSize,
+                fileUrl:  params.fileUrl,
+                mimeType: params.mimeType,
+                subject:  params.subject,
+                title:    params.title,
+                type:     params.type,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/materials/${encodeURIComponent(params.id)}`, {method: "PUT", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_materials_update_update>
         }
     }
 }
@@ -453,6 +577,67 @@ export namespace notes {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/notes/${encodeURIComponent(params.id)}`, {method: "PUT", body: JSON.stringify(body)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_notes_update_update>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { create as api_notifications_create_create } from "~backend/notifications/create";
+import { list as api_notifications_list_list } from "~backend/notifications/list";
+import { markRead as api_notifications_mark_read_markRead } from "~backend/notifications/mark_read";
+
+export namespace notifications {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.create = this.create.bind(this)
+            this.list = this.list.bind(this)
+            this.markAllRead = this.markAllRead.bind(this)
+            this.markRead = this.markRead.bind(this)
+        }
+
+        /**
+         * Creates a new notification.
+         */
+        public async create(params: RequestType<typeof api_notifications_create_create>): Promise<ResponseType<typeof api_notifications_create_create>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/notifications`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_notifications_create_create>
+        }
+
+        /**
+         * Retrieves all notifications for the current user.
+         */
+        public async list(params: RequestType<typeof api_notifications_list_list>): Promise<ResponseType<typeof api_notifications_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                limit:      params.limit === undefined ? undefined : String(params.limit),
+                page:       params.page === undefined ? undefined : String(params.page),
+                unreadOnly: params.unreadOnly === undefined ? undefined : String(params.unreadOnly),
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/notifications`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_notifications_list_list>
+        }
+
+        /**
+         * Marks all notifications as read.
+         */
+        public async markAllRead(): Promise<void> {
+            await this.baseClient.callTypedAPI(`/notifications/mark-all-read`, {method: "PUT", body: undefined})
+        }
+
+        /**
+         * Marks a notification as read.
+         */
+        public async markRead(params: { id: number }): Promise<void> {
+            await this.baseClient.callTypedAPI(`/notifications/${encodeURIComponent(params.id)}/read`, {method: "PUT", body: undefined})
         }
     }
 }
@@ -636,6 +821,59 @@ export namespace timer {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/timer/sessions`, {method: "PUT", body: JSON.stringify(params)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_timer_session_updateSession>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import {
+    deleteFile as api_upload_files_deleteFile,
+    generateUploadUrl as api_upload_files_generateUploadUrl,
+    getDownloadUrl as api_upload_files_getDownloadUrl
+} from "~backend/upload/files";
+
+export namespace upload {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.deleteFile = this.deleteFile.bind(this)
+            this.generateUploadUrl = this.generateUploadUrl.bind(this)
+            this.getDownloadUrl = this.getDownloadUrl.bind(this)
+        }
+
+        /**
+         * Deletes a file from storage.
+         */
+        public async deleteFile(params: RequestType<typeof api_upload_files_deleteFile>): Promise<void> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                fileKey: params.fileKey,
+            })
+
+            await this.baseClient.callTypedAPI(`/upload/files`, {query, method: "DELETE", body: undefined})
+        }
+
+        /**
+         * Generates a signed upload URL for file uploads.
+         */
+        public async generateUploadUrl(params: RequestType<typeof api_upload_files_generateUploadUrl>): Promise<ResponseType<typeof api_upload_files_generateUploadUrl>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/upload/generate-url`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_upload_files_generateUploadUrl>
+        }
+
+        /**
+         * Gets a download URL for an existing file.
+         */
+        public async getDownloadUrl(params: RequestType<typeof api_upload_files_getDownloadUrl>): Promise<ResponseType<typeof api_upload_files_getDownloadUrl>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/upload/download-url`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_upload_files_getDownloadUrl>
         }
     }
 }
