@@ -1,7 +1,7 @@
 import { api } from "encore.dev/api";
 import { Query } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 import { ListReflectionsResponse, Reflection } from "./types";
 
 interface ListReflectionsParams {
@@ -14,62 +14,38 @@ interface ListReflectionsParams {
 // Retrieves all reflections for the current user with optimized query.
 export const list = api<ListReflectionsParams, ListReflectionsResponse>(
   { auth: true, expose: true, method: "GET", path: "/reflections" },
-  withTiming(async (params) => {
+  async (params) => {
     const auth = getAuthData()!;
     const page = params.page || 1;
     const limit = Math.min(params.limit || 50, 100);
     const offset = (page - 1) * limit;
 
-    // Build where clause
-    const where: any = {
-      userId: auth.userID,
-    };
+    let query = `SELECT * FROM reflections WHERE user_id = ${auth.userID}`;
+    let countQuery = `SELECT count(*) FROM reflections WHERE user_id = ${auth.userID}`;
+    const queryParams: any[] = [];
 
-    if (params.startDate || params.endDate) {
-      where.date = {};
-      if (params.startDate) {
-        where.date.gte = new Date(params.startDate);
-      }
-      if (params.endDate) {
-        where.date.lte = new Date(params.endDate);
-      }
+    if (params.startDate) {
+      query += ` AND date >= $${queryParams.length + 1}`;
+      countQuery += ` AND date >= $${queryParams.length + 1}`;
+      queryParams.push(new Date(params.startDate));
+    }
+    if (params.endDate) {
+      query += ` AND date <= $${queryParams.length + 1}`;
+      countQuery += ` AND date <= $${queryParams.length + 1}`;
+      queryParams.push(new Date(params.endDate));
     }
 
-    const [reflections, totalCount] = await Promise.all([
-      prisma.reflection.findMany({
-        where,
-        orderBy: {
-          date: 'desc',
-        },
-        skip: offset,
-        take: limit,
-        select: {
-          id: true,
-          date: true,
-          studyTimeBySubject: true,
-          mood: true,
-          notes: true,
-          userId: true,
-          createdAt: true,
-          updatedAt: true,
-        }
-      }),
-      prisma.reflection.count({ where })
+    query += ` ORDER BY date DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const [reflections, totalResult] = await Promise.all([
+      db.rawQueryAll<Reflection>(query, ...queryParams),
+      db.rawQueryRow<{ count: string }>(countQuery, ...queryParams)
     ]);
 
-    const formattedReflections: Reflection[] = reflections.map(reflection => ({
-      id: reflection.id,
-      date: reflection.date,
-      studyTimeBySubject: reflection.studyTimeBySubject as Record<string, number>,
-      mood: reflection.mood || undefined,
-      notes: reflection.notes || undefined,
-      userId: reflection.userId,
-      createdAt: reflection.createdAt,
-      updatedAt: reflection.updatedAt,
-    }));
+    const totalCount = parseInt(totalResult?.count || "0", 10);
 
     return { 
-      reflections: formattedReflections,
+      reflections: reflections,
       pagination: {
         page,
         limit,
@@ -79,5 +55,5 @@ export const list = api<ListReflectionsParams, ListReflectionsResponse>(
         hasPrev: page > 1,
       }
     };
-  }, "list_reflections")
+  }
 );

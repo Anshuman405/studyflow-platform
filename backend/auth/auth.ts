@@ -1,7 +1,8 @@
-import { createClerkClient, verifyToken } from "@clerk/backend";
+import { createClerkClient } from "@clerk/backend";
 import { Header, Cookie, APIError, Gateway } from "encore.dev/api";
 import { authHandler } from "encore.dev/auth";
 import { secret } from "encore.dev/config";
+import { db } from "../db/db";
 
 const clerkSecretKey = secret("ClerkSecretKey");
 const clerkClient = createClerkClient({ secretKey: clerkSecretKey() });
@@ -21,6 +22,7 @@ export interface AuthData {
 // TODO: Configure this for your own domain when deploying to production.
 const AUTHORIZED_PARTIES = [
   "https://*.lp.dev",
+  "http://localhost:5173",
 ];
 
 const auth = authHandler<AuthParams, AuthData>(
@@ -34,17 +36,30 @@ const auth = authHandler<AuthParams, AuthData>(
     try {
       const verifiedToken = await clerkClient.verifyToken(token, {
         authorizedParties: AUTHORIZED_PARTIES,
-        secretKey: clerkSecretKey(),
       });
 
       const user = await clerkClient.users.getUser(verifiedToken.sub);
+      const primaryEmail = user.emailAddresses.find(e => e.id === user.primaryEmailAddressId)?.emailAddress;
+      const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
+
+      // Sync user to our database
+      await db.exec`
+        INSERT INTO users (id, email, name, image_url)
+        VALUES (${user.id}, ${primaryEmail}, ${name}, ${user.imageUrl})
+        ON CONFLICT (id) DO UPDATE SET
+          email = EXCLUDED.email,
+          name = EXCLUDED.name,
+          image_url = EXCLUDED.image_url,
+          updated_at = NOW();
+      `;
+
       return {
         userID: user.id,
         imageUrl: user.imageUrl,
-        email: user.emailAddresses[0]?.emailAddress ?? null,
+        email: primaryEmail ?? null,
       };
-    } catch (err) {
-      throw APIError.unauthenticated("invalid token", err);
+    } catch (err: any) {
+      throw APIError.unauthenticated("invalid token", { cause: err.message });
     }
   }
 );

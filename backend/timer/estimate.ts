@@ -1,7 +1,8 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { secret } from "encore.dev/config";
+import { TimerSession } from "./session";
 
 const geminiApiKey = secret("GeminiApiKey");
 
@@ -25,23 +26,16 @@ export const estimateTime = api<EstimateTimeRequest, EstimateTimeResponse>(
     const auth = getAuthData()!;
     
     // Get user's historical timer data for better estimates
-    const historicalSessions = await prisma.timerSession.findMany({
-      where: {
-        userId: auth.userID,
-        completed: true,
-        actualTime: { not: null },
-      },
-      include: {
-        task: {
-          select: {
-            title: true,
-            subject: true,
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
+    const historicalSessions = await db.queryAll<TimerSession & { task_title?: string; task_subject?: string }>`
+      SELECT ts.*, t.title as task_title, t.subject as task_subject
+      FROM timer_sessions ts
+      LEFT JOIN tasks t ON ts.task_id = t.id
+      WHERE ts.user_id = ${auth.userID}
+        AND ts.completed = true
+        AND ts.actual_time IS NOT NULL
+      ORDER BY ts.created_at DESC
+      LIMIT 10
+    `;
 
     const prompt = `
       Estimate completion time for this task:
@@ -51,8 +45,8 @@ export const estimateTime = api<EstimateTimeRequest, EstimateTimeResponse>(
       Complexity: ${req.complexity || "medium"}
       
       Historical data: ${JSON.stringify(historicalSessions.map(s => ({
-        taskTitle: s.task?.title,
-        subject: s.task?.subject,
+        taskTitle: s.task_title,
+        subject: s.task_subject,
         estimatedTime: s.estimatedTime,
         actualTime: s.actualTime,
       })))}

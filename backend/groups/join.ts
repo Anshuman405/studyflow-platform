@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 
 interface JoinGroupRequest {
   code: string;
@@ -14,53 +14,30 @@ interface JoinGroupResponse {
 // Joins a study group using a join code.
 export const join = api<JoinGroupRequest, JoinGroupResponse>(
   { auth: true, expose: true, method: "POST", path: "/groups/join" },
-  withTiming(async (req) => {
+  async (req) => {
     const auth = getAuthData()!;
     
     // Find group by code
-    const group = await prisma.studyGroup.findUnique({
-      where: { code: req.code.toUpperCase() },
-    });
+    const group = await db.queryRow<{ id: number; name: string; }>`
+      SELECT id, name FROM study_groups WHERE code = ${req.code.toUpperCase()}
+    `;
 
     if (!group) {
       throw APIError.notFound("Invalid join code");
     }
 
-    // Check if user is already a member
-    const existingMember = await prisma.studyGroupMember.findUnique({
-      where: {
-        userId_groupId: {
-          userId: auth.userID,
-          groupId: group.id,
-        },
-      },
-    });
-
-    if (existingMember) {
-      if (existingMember.status === 'ACTIVE') {
-        throw APIError.alreadyExists("You are already a member of this group");
-      } else {
-        // Reactivate membership
-        await prisma.studyGroupMember.update({
-          where: { id: existingMember.id },
-          data: { status: 'ACTIVE' },
-        });
-      }
-    } else {
-      // Create new membership
-      await prisma.studyGroupMember.create({
-        data: {
-          userId: auth.userID,
-          groupId: group.id,
-          role: 'MEMBER',
-          status: 'ACTIVE',
-        },
-      });
-    }
+    // Upsert membership
+    await db.exec`
+      INSERT INTO study_group_members (user_id, group_id, role, status)
+      VALUES (${auth.userID}, ${group.id}, 'MEMBER', 'ACTIVE')
+      ON CONFLICT (user_id, group_id) DO UPDATE
+      SET status = 'ACTIVE', updated_at = NOW()
+      WHERE study_group_members.status != 'ACTIVE'
+    `;
 
     return {
       success: true,
       groupName: group.name,
     };
-  }, "join_study_group")
+  }
 );

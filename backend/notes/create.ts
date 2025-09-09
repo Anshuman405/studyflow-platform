@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { CreateNoteRequest, Note } from "./types";
 
 // Creates a new note.
@@ -9,25 +9,16 @@ export const create = api<CreateNoteRequest, Note>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const note = await prisma.note.create({
-      data: {
-        title: req.title,
-        content: req.content,
-        tags: req.tags || [],
-        color: req.color || '#ffffff',
-        userId: auth.userID,
-      },
-    });
+    const note = await db.queryRow<Note>`
+      INSERT INTO notes (title, content, tags, color, user_id)
+      VALUES (${req.title}, ${req.content}, ${req.tags || []}, ${req.color || '#ffffff'}, ${auth.userID})
+      RETURNING *
+    `;
 
-    return {
-      id: note.id,
-      title: note.title,
-      content: note.content,
-      tags: note.tags,
-      color: note.color,
-      userId: note.userId,
-      createdAt: note.createdAt,
-      updatedAt: note.updatedAt,
-    };
+    if (!note) {
+      throw APIError.internal("Failed to create note");
+    }
+
+    return note;
   }
 );

@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { UpdateTaskRequest, Task } from "./types";
 
 interface UpdateTaskParams {
@@ -13,47 +13,41 @@ export const update = api<UpdateTaskParams & UpdateTaskRequest, Task>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const updateData: any = {};
-    
-    if (req.title !== undefined) updateData.title = req.title;
-    if (req.description !== undefined) updateData.description = req.description;
-    if (req.subject !== undefined) updateData.subject = req.subject;
-    if (req.startDate !== undefined) updateData.startDate = req.startDate;
-    if (req.dueDate !== undefined) updateData.dueDate = req.dueDate;
-    if (req.priority !== undefined) updateData.priority = req.priority.toUpperCase();
-    if (req.status !== undefined) updateData.status = req.status.toUpperCase().replace('_', '_');
+    const { id, ...updateData } = req;
 
     if (Object.keys(updateData).length === 0) {
       throw APIError.invalidArgument("No fields to update");
     }
 
-    try {
-      const task = await prisma.task.update({
-        where: {
-          id: req.id,
-          userId: auth.userID,
-        },
-        data: updateData,
-      });
-
-      return {
-        id: task.id,
-        title: task.title,
-        description: task.description || undefined,
-        subject: task.subject || undefined,
-        startDate: task.startDate || undefined,
-        dueDate: task.dueDate || undefined,
-        priority: task.priority.toLowerCase() as any,
-        status: task.status.toLowerCase().replace('_', '_') as any,
-        userId: task.userId,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-      };
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        throw APIError.notFound("Task not found");
+    const fields = Object.keys(updateData).map((key, i) => {
+      const typedKey = key as keyof UpdateTaskRequest;
+      // Convert camelCase to snake_case for DB
+      const snakeKey = typedKey.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      let value = updateData[typedKey];
+      if ((typedKey === 'priority' || typedKey === 'status') && typeof value === 'string') {
+        value = value.toUpperCase().replace('-', '_');
       }
-      throw error;
+      return { col: snakeKey, val: value };
+    });
+
+    const setClause = fields.map((f, i) => `${f.col} = $${i + 1}`).join(', ');
+    const queryParams = fields.map(f => f.val);
+
+    const task = await db.rawQueryRow<Task>(`
+      UPDATE tasks
+      SET ${setClause}
+      WHERE id = $${queryParams.length + 1} AND user_id = $${queryParams.length + 2}
+      RETURNING *
+    `, ...queryParams, id, auth.userID);
+
+    if (!task) {
+      throw APIError.notFound("Task not found or permission denied");
     }
+
+    return {
+      ...task,
+      priority: task.priority.toLowerCase() as any,
+      status: task.status.toLowerCase().replace('_', '_') as any,
+    };
   }
 );

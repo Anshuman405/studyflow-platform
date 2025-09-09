@@ -1,7 +1,7 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
-import { StudyStatsResponse } from "./types";
+import { db } from "../db/db";
+import { StudyStatsResponse, Reflection } from "./types";
 
 // Retrieves study statistics for the current user with optimized query.
 export const getStats = api<void, StudyStatsResponse>(
@@ -9,19 +9,12 @@ export const getStats = api<void, StudyStatsResponse>(
   async () => {
     const auth = getAuthData()!;
     
-    const reflections = await prisma.reflection.findMany({
-      where: {
-        userId: auth.userID,
-      },
-      orderBy: {
-        date: 'desc',
-      },
-      select: {
-        date: true,
-        studyTimeBySubject: true,
-        mood: true,
-      }
-    });
+    const reflections = await db.queryAll<Reflection>`
+      SELECT date, study_time_by_subject, mood
+      FROM reflections
+      WHERE user_id = ${auth.userID}
+      ORDER BY date DESC
+    `;
 
     // Calculate total study time and by subject
     let totalStudyTime = 0;

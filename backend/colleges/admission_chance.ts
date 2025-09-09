@@ -1,25 +1,17 @@
 import { api, APIError } from "encore.dev/api";
-import { prisma } from "../db/db";
-import { AdmissionChanceRequest, AdmissionChanceResponse } from "./types";
+import { db } from "../db/db";
+import { AdmissionChanceRequest, AdmissionChanceResponse, College } from "./types";
 
 // Calculates admission chance for a college based on student stats with optimized query.
 export const calculateAdmissionChance = api<AdmissionChanceRequest, AdmissionChanceResponse>(
   { expose: true, method: "POST", path: "/colleges/admission-chance" },
   async (req) => {
     // Get college data with optimized query
-    const college = await prisma.college.findUnique({
-      where: {
-        id: req.collegeId,
-      },
-      select: {
-        id: true,
-        name: true,
-        acceptanceRate: true,
-        avgGpa: true,
-        avgSat: true,
-        avgAct: true,
-      }
-    });
+    const college = await db.queryRow<College>`
+      SELECT id, name, acceptance_rate, avg_gpa, avg_sat, avg_act
+      FROM colleges
+      WHERE id = ${req.collegeId}
+    `;
 
     if (!college) {
       throw APIError.notFound("College not found");

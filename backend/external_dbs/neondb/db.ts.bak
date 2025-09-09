@@ -1,7 +1,0 @@
-import { SQLDatabase } from "encore.dev/storage/sqldb";
-
-// Use an external Postgres database by pointing to the ENV variable for Neon
-export default new SQLDatabase("neondb", {
-  dsnEnv: "DATABASE_URL",
-  migrations: "./migrations",
-});

@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 
 interface CreateSessionRequest {
   taskId?: number;
@@ -13,7 +13,7 @@ interface UpdateSessionRequest {
   completed: boolean;
 }
 
-interface TimerSession {
+export interface TimerSession {
   id: number;
   taskId?: number;
   estimatedTime: number;
@@ -30,24 +30,17 @@ export const createSession = api<CreateSessionRequest, TimerSession>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const session = await prisma.timerSession.create({
-      data: {
-        taskId: req.taskId,
-        estimatedTime: req.estimatedTime,
-        userId: auth.userID,
-      },
-    });
+    const session = await db.queryRow<TimerSession>`
+      INSERT INTO timer_sessions (task_id, estimated_time, user_id)
+      VALUES (${req.taskId}, ${req.estimatedTime}, ${auth.userID})
+      RETURNING *
+    `;
 
-    return {
-      id: session.id,
-      taskId: session.taskId || undefined,
-      estimatedTime: session.estimatedTime,
-      actualTime: session.actualTime || undefined,
-      completed: session.completed,
-      userId: session.userId,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-    };
+    if (!session) {
+      throw APIError.internal("Failed to create timer session");
+    }
+
+    return session;
   }
 );
 
@@ -57,26 +50,17 @@ export const updateSession = api<UpdateSessionRequest, TimerSession>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const session = await prisma.timerSession.update({
-      where: {
-        id: req.sessionId,
-        userId: auth.userID,
-      },
-      data: {
-        actualTime: req.actualTime,
-        completed: req.completed,
-      },
-    });
+    const session = await db.queryRow<TimerSession>`
+      UPDATE timer_sessions
+      SET actual_time = ${req.actualTime}, completed = ${req.completed}
+      WHERE id = ${req.sessionId} AND user_id = ${auth.userID}
+      RETURNING *
+    `;
 
-    return {
-      id: session.id,
-      taskId: session.taskId || undefined,
-      estimatedTime: session.estimatedTime,
-      actualTime: session.actualTime || undefined,
-      completed: session.completed,
-      userId: session.userId,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-    };
+    if (!session) {
+      throw APIError.notFound("Timer session not found or permission denied");
+    }
+
+    return session;
   }
 );

@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 
 interface CreateGroupRequest {
   name: string;
@@ -20,49 +20,6 @@ interface StudyGroup {
   updatedAt: Date;
 }
 
-// Creates a new study group.
-export const create = api<CreateGroupRequest, StudyGroup>(
-  { auth: true, expose: true, method: "POST", path: "/groups" },
-  withTiming(async (req) => {
-    const auth = getAuthData()!;
-    
-    // Generate unique join code
-    const code = generateJoinCode();
-    
-    const group = await prisma.studyGroup.create({
-      data: {
-        name: req.name,
-        description: req.description,
-        code,
-        isPublic: req.isPublic || false,
-        createdBy: auth.userID,
-      },
-    });
-
-    // Add creator as admin member
-    await prisma.studyGroupMember.create({
-      data: {
-        userId: auth.userID,
-        groupId: group.id,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-      },
-    });
-
-    return {
-      id: group.id,
-      name: group.name,
-      description: group.description || undefined,
-      code: group.code,
-      isPublic: group.isPublic,
-      createdBy: group.createdBy,
-      memberCount: 1,
-      createdAt: group.createdAt,
-      updatedAt: group.updatedAt,
-    };
-  }, "create_study_group")
-);
-
 function generateJoinCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
@@ -71,3 +28,42 @@ function generateJoinCode(): string {
   }
   return result;
 }
+
+// Creates a new study group.
+export const create = api<CreateGroupRequest, StudyGroup>(
+  { auth: true, expose: true, method: "POST", path: "/groups" },
+  async (req) => {
+    const auth = getAuthData()!;
+    
+    const code = generateJoinCode();
+    
+    const tx = await db.begin();
+    try {
+      const group = await tx.queryRow<{ id: number; name: string; description?: string; code: string; isPublic: boolean; createdBy: string; createdAt: Date; updatedAt: Date; }>`
+        INSERT INTO study_groups (name, description, code, is_public, created_by)
+        VALUES (${req.name}, ${req.description}, ${code}, ${req.isPublic || false}, ${auth.userID})
+        RETURNING *
+      `;
+
+      if (!group) {
+        throw APIError.internal("Failed to create study group");
+      }
+
+      // Add creator as admin member
+      await tx.exec`
+        INSERT INTO study_group_members (user_id, group_id, role, status)
+        VALUES (${auth.userID}, ${group.id}, 'ADMIN', 'ACTIVE')
+      `;
+
+      await tx.commit();
+
+      return {
+        ...group,
+        memberCount: 1,
+      };
+    } catch (e) {
+      await tx.rollback();
+      throw e;
+    }
+  }
+);

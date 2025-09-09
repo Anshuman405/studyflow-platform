@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { CreateCollegeRequest, College } from "./types";
 
 // Creates a new college entry.
@@ -9,31 +9,16 @@ export const create = api<CreateCollegeRequest, College>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const college = await prisma.college.create({
-      data: {
-        name: req.name,
-        location: req.location,
-        acceptanceRate: req.acceptanceRate,
-        avgGpa: req.avgGpa,
-        avgSat: req.avgSat,
-        avgAct: req.avgAct,
-        details: req.details || {},
-        createdBy: auth.userID,
-      },
-    });
+    const college = await db.queryRow<College>`
+      INSERT INTO colleges (name, location, acceptance_rate, avg_gpa, avg_sat, avg_act, details, created_by)
+      VALUES (${req.name}, ${req.location}, ${req.acceptanceRate}, ${req.avgGpa}, ${req.avgSat}, ${req.avgAct}, ${JSON.stringify(req.details || {})}, ${auth.userID})
+      RETURNING *
+    `;
 
-    return {
-      id: college.id,
-      name: college.name,
-      location: college.location || undefined,
-      acceptanceRate: college.acceptanceRate || undefined,
-      avgGpa: college.avgGpa || undefined,
-      avgSat: college.avgSat || undefined,
-      avgAct: college.avgAct || undefined,
-      details: college.details as Record<string, any>,
-      createdBy: college.createdBy,
-      createdAt: college.createdAt,
-      updatedAt: college.updatedAt,
-    };
+    if (!college) {
+      throw APIError.internal("Failed to create college");
+    }
+
+    return college;
   }
 );

@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { CreateReflectionRequest, Reflection } from "./types";
 
 // Creates or updates a reflection for a specific date.
@@ -9,36 +9,21 @@ export const create = api<CreateReflectionRequest, Reflection>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const reflection = await prisma.reflection.upsert({
-      where: {
-        date_userId: {
-          date: req.date,
-          userId: auth.userID,
-        },
-      },
-      update: {
-        studyTimeBySubject: req.studyTimeBySubject || {},
-        mood: req.mood,
-        notes: req.notes,
-      },
-      create: {
-        date: req.date,
-        studyTimeBySubject: req.studyTimeBySubject || {},
-        mood: req.mood,
-        notes: req.notes,
-        userId: auth.userID,
-      },
-    });
+    const reflection = await db.queryRow<Reflection>`
+      INSERT INTO reflections (date, study_time_by_subject, mood, notes, user_id)
+      VALUES (${req.date}, ${JSON.stringify(req.studyTimeBySubject || {})}, ${req.mood}, ${req.notes}, ${auth.userID})
+      ON CONFLICT (date, user_id) DO UPDATE SET
+        study_time_by_subject = EXCLUDED.study_time_by_subject,
+        mood = EXCLUDED.mood,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      RETURNING *
+    `;
 
-    return {
-      id: reflection.id,
-      date: reflection.date,
-      studyTimeBySubject: reflection.studyTimeBySubject as Record<string, number>,
-      mood: reflection.mood || undefined,
-      notes: reflection.notes || undefined,
-      userId: reflection.userId,
-      createdAt: reflection.createdAt,
-      updatedAt: reflection.updatedAt,
-    };
+    if (!reflection) {
+      throw APIError.internal("Failed to create or update reflection");
+    }
+
+    return reflection;
   }
 );

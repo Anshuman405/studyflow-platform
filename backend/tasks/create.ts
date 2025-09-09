@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { CreateTaskRequest, Task } from "./types";
 
 // Creates a new task.
@@ -9,30 +9,20 @@ export const create = api<CreateTaskRequest, Task>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const task = await prisma.task.create({
-      data: {
-        title: req.title,
-        description: req.description,
-        subject: req.subject,
-        startDate: req.startDate,
-        dueDate: req.dueDate,
-        priority: req.priority.toUpperCase() as any,
-        userId: auth.userID,
-      },
-    });
+    const task = await db.queryRow<Task>`
+      INSERT INTO tasks (title, description, subject, start_date, due_date, priority, user_id)
+      VALUES (${req.title}, ${req.description}, ${req.subject}, ${req.startDate}, ${req.dueDate}, ${req.priority.toUpperCase()}, ${auth.userID})
+      RETURNING *
+    `;
+
+    if (!task) {
+      throw APIError.internal("Failed to create task");
+    }
 
     return {
-      id: task.id,
-      title: task.title,
-      description: task.description || undefined,
-      subject: task.subject || undefined,
-      startDate: task.startDate || undefined,
-      dueDate: task.dueDate || undefined,
+      ...task,
       priority: task.priority.toLowerCase() as any,
       status: task.status.toLowerCase().replace('_', '_') as any,
-      userId: task.userId,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
     };
   }
 );

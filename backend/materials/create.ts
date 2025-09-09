@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { CreateMaterialRequest, Material } from "./types";
 
 // Creates a new study material.
@@ -9,25 +9,19 @@ export const create = api<CreateMaterialRequest, Material>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const material = await prisma.material.create({
-      data: {
-        title: req.title,
-        type: req.type.toUpperCase() as any,
-        fileUrl: req.fileUrl,
-        subject: req.subject,
-        userId: auth.userID,
-      },
-    });
+    const material = await db.queryRow<Material>`
+      INSERT INTO materials (title, type, file_url, subject, user_id)
+      VALUES (${req.title}, ${req.type.toUpperCase()}, ${req.fileUrl}, ${req.subject}, ${auth.userID})
+      RETURNING *
+    `;
+
+    if (!material) {
+      throw APIError.internal("Failed to create material");
+    }
 
     return {
-      id: material.id,
-      title: material.title,
+      ...material,
       type: material.type.toLowerCase() as any,
-      fileUrl: material.fileUrl || undefined,
-      subject: material.subject || undefined,
-      userId: material.userId,
-      createdAt: material.createdAt,
-      updatedAt: material.updatedAt,
     };
   }
 );

@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 
 interface DeleteEventParams {
   id: number;
@@ -12,18 +12,13 @@ export const deleteEvent = api<DeleteEventParams, void>(
   async (req) => {
     const auth = getAuthData()!;
     
-    try {
-      await prisma.event.delete({
-        where: {
-          id: req.id,
-          userId: auth.userID,
-        },
-      });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        throw APIError.notFound("Event not found");
-      }
-      throw error;
+    const res = await db.exec`
+      DELETE FROM events
+      WHERE id = ${req.id} AND user_id = ${auth.userID}
+    `;
+
+    if (res.rowsAffected === 0) {
+      throw APIError.notFound("Event not found or permission denied");
     }
   }
 );

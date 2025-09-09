@@ -32,12 +32,7 @@ npm install -g bun
 
 The backend will be available at the URL shown in your terminal (typically `http://localhost:4000`).
 
-### Prisma Migrations
-This project uses Prisma to manage database migrations. After making changes to the Prisma schema, you can run the following command to generate migrations:
 
-```bash
-npm run migrate
-```
 
 ### Frontend Setup
 

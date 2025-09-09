@@ -1,7 +1,7 @@
 import { api } from "encore.dev/api";
 import { Query } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 import { ListEventsResponse, Event } from "./types";
 
 interface ListEventsParams {
@@ -15,64 +15,45 @@ interface ListEventsParams {
 // Retrieves all events for the current user with optimized query and pagination.
 export const list = api<ListEventsParams, ListEventsResponse>(
   { auth: true, expose: true, method: "GET", path: "/events" },
-  withTiming(async (params) => {
+  async (params) => {
     const auth = getAuthData()!;
     const page = params.page || 1;
     const limit = Math.min(params.limit || 50, 100);
     const offset = (page - 1) * limit;
 
-    // Build where clause
-    const where: any = {
-      userId: auth.userID,
-    };
+    let query = `SELECT * FROM events WHERE user_id = ${auth.userID}`;
+    let countQuery = `SELECT count(*) FROM events WHERE user_id = ${auth.userID}`;
+    const queryParams: any[] = [];
 
     if (params.category && params.category !== 'all') {
-      where.category = params.category.toUpperCase();
+      query += ` AND category = $${queryParams.length + 1}`;
+      countQuery += ` AND category = $${queryParams.length + 1}`;
+      queryParams.push(params.category.toUpperCase());
     }
 
-    if (params.startDate || params.endDate) {
-      where.date = {};
-      if (params.startDate) {
-        where.date.gte = new Date(params.startDate);
-      }
-      if (params.endDate) {
-        where.date.lte = new Date(params.endDate);
-      }
+    if (params.startDate) {
+      query += ` AND date >= $${queryParams.length + 1}`;
+      countQuery += ` AND date >= $${queryParams.length + 1}`;
+      queryParams.push(new Date(params.startDate));
+    }
+    if (params.endDate) {
+      query += ` AND date <= $${queryParams.length + 1}`;
+      countQuery += ` AND date <= $${queryParams.length + 1}`;
+      queryParams.push(new Date(params.endDate));
     }
 
-    const [events, totalCount] = await Promise.all([
-      prisma.event.findMany({
-        where,
-        orderBy: {
-          date: 'asc',
-        },
-        skip: offset,
-        take: limit,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          date: true,
-          category: true,
-          location: true,
-          userId: true,
-          createdAt: true,
-          updatedAt: true,
-        }
-      }),
-      prisma.event.count({ where })
+    query += ` ORDER BY date ASC LIMIT ${limit} OFFSET ${offset}`;
+
+    const [events, totalResult] = await Promise.all([
+      db.rawQueryAll<Event>(query, ...queryParams),
+      db.rawQueryRow<{ count: string }>(countQuery, ...queryParams)
     ]);
 
+    const totalCount = parseInt(totalResult?.count || "0", 10);
+
     const formattedEvents: Event[] = events.map(event => ({
-      id: event.id,
-      title: event.title,
-      description: event.description || undefined,
-      date: event.date,
-      category: event.category.toLowerCase().replace('_', '_') as any,
-      location: event.location || undefined,
-      userId: event.userId,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
+      ...event,
+      category: event.category.toLowerCase() as any,
     }));
 
     return { 
@@ -86,5 +67,5 @@ export const list = api<ListEventsParams, ListEventsResponse>(
         hasPrev: page > 1,
       }
     };
-  }, "list_events")
+  }
 );

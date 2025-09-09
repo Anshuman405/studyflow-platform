@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 
 export type NotificationType = "reminder" | "deadline" | "group_invite" | "system";
 
@@ -28,31 +28,22 @@ export interface Notification {
 // Creates a new notification.
 export const create = api<CreateNotificationRequest, Notification>(
   { auth: true, expose: true, method: "POST", path: "/notifications" },
-  withTiming(async (req) => {
+  async (req) => {
     const auth = getAuthData()!;
     
-    const notification = await prisma.notification.create({
-      data: {
-        title: req.title,
-        message: req.message,
-        type: req.type.toUpperCase() as any,
-        taskId: req.taskId,
-        eventId: req.eventId,
-        userId: auth.userID,
-      },
-    });
+    const notification = await db.queryRow<Notification>`
+      INSERT INTO notifications (title, message, type, task_id, event_id, user_id)
+      VALUES (${req.title}, ${req.message}, ${req.type.toUpperCase()}, ${req.taskId}, ${req.eventId}, ${auth.userID})
+      RETURNING *
+    `;
+
+    if (!notification) {
+      throw APIError.internal("Failed to create notification");
+    }
 
     return {
-      id: notification.id,
-      title: notification.title,
-      message: notification.message,
+      ...notification,
       type: notification.type.toLowerCase() as any,
-      read: notification.read,
-      taskId: notification.taskId || undefined,
-      eventId: notification.eventId || undefined,
-      userId: notification.userId,
-      createdAt: notification.createdAt,
-      updatedAt: notification.updatedAt,
     };
-  }, "create_notification")
+  }
 );

@@ -1,6 +1,6 @@
 import { api } from "encore.dev/api";
 import { Query } from "encore.dev/api";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 import { SearchCollegesResponse, College } from "./types";
 
 interface SearchCollegesParams {
@@ -12,61 +12,30 @@ interface SearchCollegesParams {
 // Searches for colleges by name with optimized query and caching.
 export const search = api<SearchCollegesParams, SearchCollegesResponse>(
   { expose: true, method: "GET", path: "/colleges/search" },
-  withTiming(async (req) => {
+  async (req) => {
     const query = req.query || "";
     const limit = Math.min(req.limit || 20, 50);
     const page = req.page || 1;
     const offset = (page - 1) * limit;
     
-    // Use optimized search with indexes
-    const where = query ? {
-      name: {
-        contains: query,
-        mode: 'insensitive' as const,
-      },
-    } : {};
+    const whereClause = query ? `WHERE name ILIKE ${'%' + query + '%'}` : "";
 
-    const [colleges, totalCount] = await Promise.all([
-      prisma.college.findMany({
-        where,
-        orderBy: [
-          { name: 'asc' },
-        ],
-        skip: offset,
-        take: limit,
-        select: {
-          id: true,
-          name: true,
-          location: true,
-          acceptanceRate: true,
-          avgGpa: true,
-          avgSat: true,
-          avgAct: true,
-          details: true,
-          createdBy: true,
-          createdAt: true,
-          updatedAt: true,
-        }
-      }),
-      prisma.college.count({ where })
-    ]);
+    const colleges = await db.queryAll<College>`
+      SELECT * FROM colleges
+      ${whereClause}
+      ORDER BY name ASC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
 
-    const formattedColleges: College[] = colleges.map(college => ({
-      id: college.id,
-      name: college.name,
-      location: college.location || undefined,
-      acceptanceRate: college.acceptanceRate || undefined,
-      avgGpa: college.avgGpa || undefined,
-      avgSat: college.avgSat || undefined,
-      avgAct: college.avgAct || undefined,
-      details: college.details as Record<string, any>,
-      createdBy: college.createdBy,
-      createdAt: college.createdAt,
-      updatedAt: college.updatedAt,
-    }));
+    const totalResult = await db.queryRow<{ count: string }>`
+      SELECT count(*) FROM colleges
+      ${whereClause}
+    `;
+    const totalCount = parseInt(totalResult?.count || "0", 10);
 
     return { 
-      colleges: formattedColleges,
+      colleges: colleges,
       pagination: {
         page,
         limit,
@@ -76,5 +45,5 @@ export const search = api<SearchCollegesParams, SearchCollegesResponse>(
         hasPrev: page > 1,
       }
     };
-  }, "search_colleges")
+  }
 );

@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { CreateEventRequest, Event } from "./types";
 
 // Creates a new event.
@@ -9,27 +9,19 @@ export const create = api<CreateEventRequest, Event>(
   async (req) => {
     const auth = getAuthData()!;
     
-    const event = await prisma.event.create({
-      data: {
-        title: req.title,
-        description: req.description,
-        date: req.date,
-        category: req.category.toUpperCase().replace('_', '_') as any,
-        location: req.location,
-        userId: auth.userID,
-      },
-    });
+    const event = await db.queryRow<Event>`
+      INSERT INTO events (title, description, date, category, location, user_id)
+      VALUES (${req.title}, ${req.description}, ${req.date}, ${req.category.toUpperCase()}, ${req.location}, ${auth.userID})
+      RETURNING *
+    `;
+
+    if (!event) {
+      throw APIError.internal("Failed to create event");
+    }
 
     return {
-      id: event.id,
-      title: event.title,
-      description: event.description || undefined,
-      date: event.date,
-      category: event.category.toLowerCase().replace('_', '_') as any,
-      location: event.location || undefined,
-      userId: event.userId,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
+      ...event,
+      category: event.category.toLowerCase() as any,
     };
   }
 );

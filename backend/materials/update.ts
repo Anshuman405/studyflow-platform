@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma } from "../db/db";
+import { db } from "../db/db";
 import { UpdateMaterialRequest, Material } from "./types";
 
 interface UpdateMaterialParams {
@@ -13,47 +13,39 @@ export const update = api<UpdateMaterialParams & UpdateMaterialRequest, Material
   async (req) => {
     const auth = getAuthData()!;
     
-    const updateData: any = {};
-    
-    if (req.title !== undefined) updateData.title = req.title;
-    if (req.type !== undefined) updateData.type = req.type.toUpperCase();
-    if (req.fileUrl !== undefined) updateData.fileUrl = req.fileUrl;
-    if (req.fileName !== undefined) updateData.fileName = req.fileName;
-    if (req.fileSize !== undefined) updateData.fileSize = req.fileSize;
-    if (req.mimeType !== undefined) updateData.mimeType = req.mimeType;
-    if (req.subject !== undefined) updateData.subject = req.subject;
+    const { id, ...updateData } = req;
 
     if (Object.keys(updateData).length === 0) {
       throw APIError.invalidArgument("No fields to update");
     }
 
-    try {
-      const material = await prisma.material.update({
-        where: {
-          id: req.id,
-          userId: auth.userID,
-        },
-        data: updateData,
-      });
-
-      return {
-        id: material.id,
-        title: material.title,
-        type: material.type.toLowerCase() as any,
-        fileUrl: material.fileUrl || undefined,
-        fileName: material.fileName || undefined,
-        fileSize: material.fileSize || undefined,
-        mimeType: material.mimeType || undefined,
-        subject: material.subject || undefined,
-        userId: material.userId,
-        createdAt: material.createdAt,
-        updatedAt: material.updatedAt,
-      };
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        throw APIError.notFound("Material not found");
+    const fields = Object.keys(updateData).map((key, i) => {
+      const typedKey = key as keyof UpdateMaterialRequest;
+      const snakeKey = typedKey.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      let value = updateData[typedKey];
+      if (typedKey === 'type' && typeof value === 'string') {
+        value = value.toUpperCase();
       }
-      throw error;
+      return { col: snakeKey, val: value };
+    });
+
+    const setClause = fields.map((f, i) => `${f.col} = $${i + 1}`).join(', ');
+    const queryParams = fields.map(f => f.val);
+
+    const material = await db.rawQueryRow<Material>(`
+      UPDATE materials
+      SET ${setClause}
+      WHERE id = $${queryParams.length + 1} AND user_id = $${queryParams.length + 2}
+      RETURNING *
+    `, ...queryParams, id, auth.userID);
+
+    if (!material) {
+      throw APIError.notFound("Material not found or permission denied");
     }
+
+    return {
+      ...material,
+      type: material.type.toLowerCase() as any,
+    };
   }
 );

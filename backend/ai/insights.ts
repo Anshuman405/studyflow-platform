@@ -1,9 +1,21 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { prisma, withTiming } from "../db/db";
+import { db } from "../db/db";
 import { secret } from "encore.dev/config";
+import { Task } from "../tasks/types";
+import { Reflection } from "../reflections/types";
+import { Event } from "../events/types";
 
 const geminiApiKey = secret("GeminiApiKey");
+
+interface AiInsight {
+  id: number;
+  userId: string;
+  subject?: string;
+  recommendations: any;
+  insightType: string;
+  createdAt: Date;
+}
 
 interface GenerateInsightsRequest {
   type: "weekly" | "study_breakdown" | "college_prediction";
@@ -18,25 +30,21 @@ interface GenerateInsightsResponse {
 // Generates AI insights using Google Gemini with caching.
 export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsResponse>(
   { auth: true, expose: true, method: "POST", path: "/ai/insights" },
-  withTiming(async (req) => {
+  async (req) => {
     const auth = getAuthData()!;
     
     // Check for recent insights of the same type (cache for 1 hour)
-    const recentInsight = await prisma.aiInsight.findFirst({
-      where: {
-        userId: auth.userID,
-        insightType: req.type,
-        createdAt: {
-          gte: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const recentInsight = await db.queryRow<AiInsight>`
+      SELECT * FROM ai_insights
+      WHERE user_id = ${auth.userID}
+        AND insight_type = ${req.type}
+        AND created_at >= NOW() - INTERVAL '1 hour'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
 
     if (recentInsight) {
-      const cached = recentInsight.recommendations as any;
+      const cached = recentInsight.recommendations;
       return {
         insights: cached.insights || [],
         recommendations: cached.recommendations || [],
@@ -45,41 +53,24 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
 
     // Get user's recent data for context with optimized queries
     const [tasks, reflections, events] = await Promise.all([
-      prisma.task.findMany({
-        where: { userId: auth.userID },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-        select: {
-          title: true,
-          status: true,
-          priority: true,
-          subject: true,
-          dueDate: true,
-        },
-      }),
-      prisma.reflection.findMany({
-        where: { userId: auth.userID },
-        orderBy: { date: 'desc' },
-        take: 7,
-        select: {
-          date: true,
-          mood: true,
-          studyTimeBySubject: true,
-        },
-      }),
-      prisma.event.findMany({
-        where: { 
-          userId: auth.userID,
-          date: { gte: new Date() }
-        },
-        orderBy: { date: 'asc' },
-        take: 10,
-        select: {
-          title: true,
-          category: true,
-          date: true,
-        },
-      }),
+      db.queryAll<Task>`
+        SELECT title, status, priority, subject, due_date FROM tasks
+        WHERE user_id = ${auth.userID}
+        ORDER BY created_at DESC
+        LIMIT 20
+      `,
+      db.queryAll<Reflection>`
+        SELECT date, mood, study_time_by_subject FROM reflections
+        WHERE user_id = ${auth.userID}
+        ORDER BY date DESC
+        LIMIT 7
+      `,
+      db.queryAll<Event>`
+        SELECT title, category, date FROM events
+        WHERE user_id = ${auth.userID} AND date >= NOW()
+        ORDER BY date ASC
+        LIMIT 10
+      `,
     ]);
 
     // Prepare context for AI
@@ -156,13 +147,10 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
       }
 
       // Store insights in database
-      await prisma.aiInsight.create({
-        data: {
-          userId: auth.userID,
-          recommendations: aiResponse,
-          insightType: req.type,
-        },
-      });
+      await db.exec`
+        INSERT INTO ai_insights (user_id, recommendations, insight_type)
+        VALUES (${auth.userID}, ${JSON.stringify(aiResponse)}, ${req.type})
+      `;
 
       return {
         insights: aiResponse.insights || [],
@@ -186,15 +174,12 @@ export const generateInsights = api<GenerateInsightsRequest, GenerateInsightsRes
       };
 
       // Store fallback in database
-      await prisma.aiInsight.create({
-        data: {
-          userId: auth.userID,
-          recommendations: fallbackResponse,
-          insightType: req.type,
-        },
-      });
+      await db.exec`
+        INSERT INTO ai_insights (user_id, recommendations, insight_type)
+        VALUES (${auth.userID}, ${JSON.stringify(fallbackResponse)}, ${req.type})
+      `;
 
       return fallbackResponse;
     }
-  }, "generate_ai_insights")
+  }
 );
